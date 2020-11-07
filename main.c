@@ -3,14 +3,14 @@
 #include <avr/power.h>
 #include <avr/sleep.h>
 #include <avr/wdt.h>
-#include <util/atomic.h>
 
 #define DEBOUNCE_TICKS (F_CPU / 1024 / 100)
 #define TICKS_PER_SECOND (F_CPU / 1024)
-#define HALF_CARAFE_GRIND_SECONDS 15
-#define FULL_CARAFE_GRIND_SECONDS 30
+#define HALF_CARAFE_GRIND_SECONDS 18
+#define FULL_CARAFE_GRIND_SECONDS 36
+#define SINGLE_CUP_GRIND_SECONDS 3
 
-volatile unsigned char counter = 0;
+volatile unsigned int counter = 0;
 volatile char counterStep = 0;
 volatile unsigned char digit = 0;
 
@@ -133,8 +133,8 @@ void setupButtonDebounceTimer(void) {
 void setupButtonTimer(void) {
 	TCCR1A = 0;
 	TCCR1B = _BV(WGM12);
-	OCR1AH = TICKS_PER_SECOND >> 8;
-	OCR1AL = TICKS_PER_SECOND && 0xFF;
+	OCR1AH = (TICKS_PER_SECOND / 10) >> 8;
+	OCR1AL = (TICKS_PER_SECOND / 10) && 0xFF;
 	TCNT1H = 0;
 	TCNT1L = 0;
 	TIMSK1 |= _BV(OCIE1A);
@@ -155,11 +155,15 @@ void setupDisplay(void) {
 }
 
 void setupButtons(void) {
+	DDRB &= ~_BV(DDB4);
+	PORTB |= _BV(PORTB4);
+
 	DDRC &= ~(_BV(DDC5) | _BV(DDC4) | _BV(DDC3));
 	PORTC |= _BV(PORTC5) | _BV(PORTC4) | _BV(PORTC3);
 
+	PCMSK0 = _BV(PCINT4);
 	PCMSK1 = _BV(PCINT13) | _BV(PCINT12) | _BV(PCINT11);
-	PCICR |= _BV(PCIE1);
+	PCICR |= _BV(PCIE1) | _BV(PCIE0);
 }
 
 void setupGrinder(void) {
@@ -169,6 +173,10 @@ void setupGrinder(void) {
 
 ISR(TIMER0_COMPA_vect) {
 	unsigned char segment = 0;
+	static unsigned int residual;
+
+	wdt_enable(WDTO_15MS);
+	wdt_reset();
 
 	PORTB |= _BV(PORTB1) | _BV(PORTB0);
 	PORTD |= _BV(PORTD2) | _BV(PORTD3) | _BV(PORTD4) | _BV(PORTD5) | _BV(PORTD6) | _BV(PORTD7);
@@ -178,19 +186,30 @@ ISR(TIMER0_COMPA_vect) {
 	if (digit == 0) {
 		digit += 1;
 		PORTC |= _BV(PORTC0);
-		segment = counter / 1000;
+		residual = counter;
+		while (residual >= 1000) {
+			residual -= 1000;
+			segment += 1;
+		}
 	} else if (digit == 1) {
 		digit += 1;
 		PORTC |= _BV(PORTC1);
-		segment = (counter % 1000) / 100;
+		while (residual >= 100) {
+			residual -= 100;
+			segment += 1;
+		}
 	} else if (digit == 2) {
 		digit += 1;
 		PORTC |= _BV(PORTC2);
-		segment = (counter % 100) / 10;
+		while (residual >= 10) {
+			residual -= 10;
+			segment += 1;
+		}
+		PORTD &= ~_BV(PORTD7);
 	} else if (digit == 3) {
 		digit = 0;
 		PORTB |= _BV(PORTB2);
-		segment = counter % 10;
+		segment = residual;
 	}
 
 	if (segment == 0) {
@@ -227,6 +246,9 @@ ISR(TIMER0_COMPA_vect) {
 }
 
 ISR(TIMER1_COMPA_vect) {
+	wdt_enable(WDTO_15MS);
+	wdt_reset();
+
 	if (counter > 0 && counterStep < 0) {
 		counter -= 1;
 	} else if (counterStep > 0) {
@@ -239,6 +261,9 @@ ISR(TIMER1_COMPA_vect) {
 }
 
 ISR(TIMER2_COMPA_vect) {
+	wdt_enable(WDTO_15MS);
+	wdt_reset();
+
 	disableDebounceTimer();
 
 	unsigned char pins = PINC;
@@ -246,10 +271,13 @@ ISR(TIMER2_COMPA_vect) {
 		counter = 0;
 		counterStep = 1;
 	} else if ((pins ^ _BV(PINC5)) & _BV(PINC5)) {
-		counter += FULL_CARAFE_GRIND_SECONDS;
+		counter += FULL_CARAFE_GRIND_SECONDS * 10;
 		counterStep = -1;
 	} else if ((pins ^ _BV(PINC4)) & _BV(PINC4)) {
-		counter += HALF_CARAFE_GRIND_SECONDS;
+		counter += HALF_CARAFE_GRIND_SECONDS * 10;
+		counterStep = -1;
+	} else if ((PINB ^ _BV(PINB4)) & _BV(PINB4)) {
+		counter += SINGLE_CUP_GRIND_SECONDS * 10;
 		counterStep = -1;
 	} else if (counterStep == 1) {
 		counter = 0;
@@ -264,6 +292,17 @@ ISR(TIMER2_COMPA_vect) {
 }
 
 ISR(PCINT1_vect) {
+	wdt_enable(WDTO_15MS);
+	wdt_reset();
+
+	set_sleep_mode(SLEEP_MODE_IDLE);
+	enableDebounceTimer();
+}
+
+ISR(PCINT0_vect) {
+	wdt_enable(WDTO_15MS);
+	wdt_reset();
+
 	set_sleep_mode(SLEEP_MODE_IDLE);
 	enableDebounceTimer();
 }

@@ -8,4 +8,5 @@ RUN apt-get update \
 		gcc-avr \
 		gdb-avr \
 		git \
-		make
+		make \
+		openssh-client
