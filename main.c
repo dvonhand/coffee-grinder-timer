@@ -6,8 +6,8 @@
 
 #define DEBOUNCE_TICKS (F_CPU / 1024 / 100)
 #define TICKS_PER_SECOND (F_CPU / 1024)
-#define HALF_CARAFE_GRIND_SECONDS 18
-#define FULL_CARAFE_GRIND_SECONDS 36
+#define HALF_CARAFE_GRIND_SECONDS (6 * SINGLE_CUP_GRIND_SECONDS)
+#define FULL_CARAFE_GRIND_SECONDS (2 * HALF_CARAFE_GRIND_SECONDS)
 #define SINGLE_CUP_GRIND_SECONDS 3
 
 volatile unsigned int counter = 0;
@@ -271,13 +271,13 @@ ISR(TIMER2_COMPA_vect) {
 		counter = 0;
 		counterStep = 1;
 	} else if ((pins ^ _BV(PINC5)) & _BV(PINC5)) {
-		counter += FULL_CARAFE_GRIND_SECONDS * 10;
+		counter = FULL_CARAFE_GRIND_SECONDS * 10;
 		counterStep = -1;
 	} else if ((pins ^ _BV(PINC4)) & _BV(PINC4)) {
-		counter += HALF_CARAFE_GRIND_SECONDS * 10;
+		counter = HALF_CARAFE_GRIND_SECONDS * 10;
 		counterStep = -1;
 	} else if ((PINB ^ _BV(PINB4)) & _BV(PINB4)) {
-		counter += SINGLE_CUP_GRIND_SECONDS * 10;
+		counter = SINGLE_CUP_GRIND_SECONDS * 10;
 		counterStep = -1;
 	} else if (counterStep == 1) {
 		counter = 0;
