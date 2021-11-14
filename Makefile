@@ -33,6 +33,9 @@ install: main.hex
 %.o: %.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
 
+%.o: %.s
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
+
 %.elf: %.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
